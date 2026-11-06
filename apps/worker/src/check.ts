@@ -5,7 +5,8 @@ import { confirmSoldOut, diffSeats } from "./diff";
 import type { SeatType } from "@rw/core/domain";
 import { log } from "./log";
 import { formatTrackerMessage } from "./notify/format";
-import { getOwnerChatId, sendOwnerMessage } from "@rw/core/telegram";
+import { broadcast } from "@rw/core/telegram";
+import { listRecipientIds } from "@rw/db/recipients";
 import type { TrainInfo } from "@rw/core/rw-types";
 
 export type Tracker = typeof trackers.$inferSelect;
@@ -122,12 +123,16 @@ async function notifyPending(tracker: Tracker) {
     .orderBy(asc(events.at));
   if (unsent.length === 0) return;
 
-  if (getOwnerChatId() === null) {
-    log.warn(`Tracker #${tracker.id} has ${unsent.length} unsent event(s): TELEGRAM_ALLOWED_USER_ID is not set`);
+  const recipientIds = await listRecipientIds();
+  if (recipientIds.length === 0) {
+    log.warn(`Tracker #${tracker.id} has ${unsent.length} unsent event(s): no Telegram recipients configured`);
     return;
   }
 
-  await sendOwnerMessage(formatTrackerMessage(tracker, unsent));
+  const result = await broadcast(recipientIds, formatTrackerMessage(tracker, unsent));
+  for (const failure of result.failed) log.error(`Failed to notify chat ${failure.chatId}`, failure.error);
+  if (result.sent.length === 0) throw new Error("Не доставлено ни одному получателю");
+
   await db
     .update(events)
     .set({ notifiedAt: new Date() })
