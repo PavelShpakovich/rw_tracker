@@ -8,6 +8,7 @@
     "build": "pnpm --filter @rw/web build",
     "worker": "pnpm --filter @rw/worker start",
     "worker:once": "pnpm --filter @rw/worker start --once",
+    "stop": "pkill -f 'rw-tracker.*src/index.ts'; lsof -tiTCP:3000 -sTCP:LISTEN | xargs kill; true",
     "check-route": "pnpm --filter @rw/worker check-route",
     "db:generate": "pnpm --filter @rw/db generate",
     "db:migrate": "pnpm --filter @rw/db migrate",
