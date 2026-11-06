@@ -1,69 +1,94 @@
-import Image from "next/image";
+import Link from "next/link";
+import { SEAT_LABELS, type SeatType } from "@/lib/domain";
+import { formatDateTime, formatIsoDate, formatPriceByn } from "@/lib/format";
+import { listSeatStates, listTrackers } from "@/lib/trackers";
+import { requestCheckAction, setActiveAction } from "./actions";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default function DashboardPage() {
+  const trackers = listTrackers();
+  const states = listSeatStates();
+
+  if (trackers.length === 0) {
+    return (
+      <section className="space-y-3">
+        <h1 className="text-xl font-semibold">Трекеров пока нет</h1>
+        <p className="opacity-80">
+          Создайте первый трекер: выберите маршрут и дату, затем отметьте поезда и типы мест.
+        </p>
+        <Link href="/trackers/new" className="inline-block rounded bg-foreground px-4 py-2 text-background">
+          Новый трекер
+        </Link>
+      </section>
+    );
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <section className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold">Трекеры</h1>
+        <form action={requestCheckAction}>
+          <input type="hidden" name="id" value="all" />
+          <button type="submit" className="rounded border px-3 py-1.5 text-sm">Проверить все</button>
+        </form>
+      </div>
+
+      <ul className="space-y-4">
+        {trackers.map((tracker) => {
+          const seats = states.filter((state) => state.trackerId === tracker.id);
+          return (
+            <li key={tracker.id} className="rounded border border-black/10 p-4 dark:border-white/10">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <Link href={`/trackers/${tracker.id}`} className="font-medium hover:underline">
+                  {tracker.trainNumber} · {tracker.trainTitle}
+                </Link>
+                <span className="text-xs opacity-70">
+                  {tracker.active ? "активен" : "на паузе"}
+                </span>
+              </div>
+
+              <p className="mt-1 text-sm opacity-80">
+                {tracker.fromName} → {tracker.toName} · {formatIsoDate(tracker.date)}
+                {tracker.departure && tracker.arrival ? ` · ${tracker.departure} → ${tracker.arrival}` : ""}
+              </p>
+
+              <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                {tracker.seatTypes.map((seatType: SeatType) => {
+                  const state = seats.find((item) => item.seatType === seatType);
+                  return (
+                    <li key={seatType}>
+                      {SEAT_LABELS[seatType]}:{" "}
+                      <span className="font-semibold">{state ? state.count : "—"}</span>
+                      {state?.priceByn ? <span className="opacity-60"> · {formatPriceByn(state.priceByn)}</span> : null}
+                    </li>
+                  );
+                })}
+              </ul>
+
+              <p className="mt-3 text-xs opacity-70">
+                Последняя успешная проверка:{" "}
+                {tracker.lastSuccessAt ? formatDateTime(tracker.lastSuccessAt) : "ещё не было"}
+              </p>
+              {tracker.lastError ? <p className="mt-1 text-xs text-red-600">Ошибка: {tracker.lastError}</p> : null}
+
+              <div className="mt-3 flex gap-2">
+                <form action={setActiveAction}>
+                  <input type="hidden" name="id" value={tracker.id} />
+                  <input type="hidden" name="active" value={String(!tracker.active)} />
+                  <button type="submit" className="rounded border px-3 py-1 text-xs">
+                    {tracker.active ? "Пауза" : "Продолжить"}
+                  </button>
+                </form>
+                <form action={requestCheckAction}>
+                  <input type="hidden" name="id" value={tracker.id} />
+                  <button type="submit" className="rounded border px-3 py-1 text-xs">Проверить сейчас</button>
+                </form>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
