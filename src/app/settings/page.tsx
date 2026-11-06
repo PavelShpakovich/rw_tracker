@@ -15,7 +15,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ test?: string }> }) {
   const { test } = await searchParams;
-  const runs = listRecentCheckRuns();
+  const runs = await listRecentCheckRuns();
   const botConfigured = Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_ALLOWED_USER_ID !== undefined);
   const recipient = getOwnerChatId();
 

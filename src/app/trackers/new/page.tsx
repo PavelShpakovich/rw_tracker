@@ -1,10 +1,10 @@
 import { SEAT_LABELS, EVENT_LABELS, EVENT_KINDS } from "@/lib/domain";
 import { env } from "@/lib/env";
 import { formatPriceByn, tomorrowInMinsk } from "@/lib/format";
-import { fetchRouteHtml } from "@/lib/rw/client";
-import { parseRoute } from "@/lib/rw/parser";
+import { getRouteSearch } from "@/lib/trackers";
 import type { TrainInfo } from "@/lib/rw/types";
-import { createTrackersAction } from "../../actions";
+import { AutoRefresh } from "../../auto-refresh";
+import { createTrackersAction, searchRouteAction } from "../../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -13,22 +13,37 @@ interface SearchParams {
   to?: string;
   date?: string;
   error?: string;
+  search?: string;
 }
 
 const inputClass = "rounded border border-black/20 bg-transparent px-2 py-1.5 text-sm dark:border-white/20";
 
 export default async function NewTrackerPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  const { from, to, date, error } = await searchParams;
+  const { from, to, date, error, search: searchId } = await searchParams;
 
   let trains: TrainInfo[] | null = null;
   let loadError: string | null = null;
-  if (from && to && date) {
-    try {
-      trains = parseRoute(await fetchRouteHtml({ from, to, date }));
-    } catch (cause) {
-      loadError = cause instanceof Error ? cause.message : String(cause);
+  let isPending = false;
+  let isWorkerOffline = false;
+
+  if (searchId) {
+    const searchRecord = await getRouteSearch(Number(searchId));
+    if (searchRecord) {
+      if (searchRecord.status === "pending") {
+        isPending = true;
+        const ageMs = new Date().getTime() - searchRecord.createdAt.getTime();
+        if (ageMs > 30_000) isWorkerOffline = true;
+      } else if (searchRecord.status === "done") {
+        trains = searchRecord.result as unknown as TrainInfo[];
+      } else if (searchRecord.status === "error") {
+        loadError = searchRecord.error ?? "Неизвестная ошибка";
+      }
     }
   }
+
+  const fromVal = from ?? "";
+  const toVal = to ?? "";
+  const dateVal = date ?? "";
 
   const trainsPayload = trains?.map(({ number, routeTitle, departure, arrival }) => ({
     number,
@@ -39,20 +54,22 @@ export default async function NewTrackerPage({ searchParams }: { searchParams: P
 
   return (
     <div className="space-y-8">
+      {isPending && !isWorkerOffline && <AutoRefresh intervalMs={2000} />}
+
       <section className="space-y-3">
         <h1 className="text-xl font-semibold">Новый трекер</h1>
-        <form method="get" className="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end">
+        <form action={searchRouteAction} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end">
           <label className="flex flex-col gap-1 text-sm">
             Откуда
-            <input name="from" defaultValue={from} required placeholder="Минск" className={inputClass} />
+            <input name="from" defaultValue={fromVal} required placeholder="Минск" className={inputClass} />
           </label>
           <label className="flex flex-col gap-1 text-sm">
             Куда
-            <input name="to" defaultValue={to} required placeholder="Гродно" className={inputClass} />
+            <input name="to" defaultValue={toVal} required placeholder="Гродно" className={inputClass} />
           </label>
           <label className="flex flex-col gap-1 text-sm">
             Дата
-            <input name="date" type="date" defaultValue={date ?? tomorrowInMinsk()} required className={inputClass} />
+            <input name="date" type="date" defaultValue={dateVal || tomorrowInMinsk()} required className={inputClass} />
           </label>
           <button type="submit" className="rounded bg-foreground px-4 py-1.5 text-sm text-background">
             Найти поезда
@@ -66,14 +83,22 @@ export default async function NewTrackerPage({ searchParams }: { searchParams: P
       {error === "none" ? (
         <p className="text-sm text-red-600">Отметьте хотя бы один поезд и тип мест.</p>
       ) : null}
+      {isPending && !isWorkerOffline ? (
+        <p className="text-sm opacity-70">Ищем поезда…</p>
+      ) : null}
+      {isWorkerOffline ? (
+        <p className="text-sm text-amber-600">
+          Воркер не запущен: запустите <code className="font-mono">pnpm worker</code> на любом устройстве.
+        </p>
+      ) : null}
       {loadError ? <p className="text-sm text-red-600">Не удалось загрузить расписание: {loadError}</p> : null}
       {trains?.length === 0 ? <p className="text-sm opacity-80">На эту дату поездов не найдено.</p> : null}
 
-      {trains && trains.length > 0 && from && to && date ? (
+      {trains && trains.length > 0 ? (
         <form action={createTrackersAction} className="space-y-6">
-          <input type="hidden" name="from" value={from} />
-          <input type="hidden" name="to" value={to} />
-          <input type="hidden" name="date" value={date} />
+          <input type="hidden" name="from" value={trains[0] ? fromVal : ""} />
+          <input type="hidden" name="to" value={toVal} />
+          <input type="hidden" name="date" value={dateVal} />
           <input type="hidden" name="trains" value={JSON.stringify(trainsPayload)} />
 
           <section className="space-y-4">

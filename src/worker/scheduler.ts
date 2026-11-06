@@ -1,6 +1,7 @@
-import { and, eq, inArray, lt } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
+import os from "node:os";
 import { db } from "../lib/db";
-import { checkRuns, trackers } from "../lib/db/schema";
+import { checkRuns, routeSearches, trackers, workerLease } from "../lib/db/schema";
 import { dateInMinsk } from "../lib/format";
 import { log } from "../lib/log";
 import { sendOwnerMessage } from "../lib/notify/telegram";
@@ -13,6 +14,9 @@ import { checkTracker, type Tracker } from "./check";
 const RATE_LIMIT_PAUSE_MS = 10 * 60_000;
 const PARSE_ALERT_COOLDOWN_MS = 60 * 60_000;
 const MAX_JITTER_MS = 5_000;
+const LEASE_TTL_SEC = 90;
+
+const holderId = `${os.hostname()}:${process.pid}`;
 
 // Route key -> timestamp until which requests for it are suspended.
 const pausedRoutes = new Map<string, number>();
@@ -27,23 +31,21 @@ function isDue(tracker: Tracker, now: Date): boolean {
   return now.getTime() - tracker.lastAttemptAt.getTime() >= tracker.intervalSec * 1000;
 }
 
-function recordRun(key: string, startedAt: Date, status: string, trainsFound: number | null, error?: string) {
-  db.insert(checkRuns)
-    .values({
-      routeKey: key,
-      startedAt,
-      durationMs: Date.now() - startedAt.getTime(),
-      status,
-      trainsFound,
-      error: error ?? null,
-    })
-    .run();
+async function recordRun(key: string, startedAt: Date, status: string, trainsFound: number | null, error?: string) {
+  await db.insert(checkRuns).values({
+    routeKey: key,
+    startedAt,
+    durationMs: Date.now() - startedAt.getTime(),
+    status,
+    trainsFound: trainsFound ?? null,
+    error: error ?? null,
+  });
 }
 
 async function alertBrokenPage(query: RouteQuery) {
-  const lastAlert = Number(getSetting(SETTING.lastParseAlertAt) ?? 0);
+  const lastAlert = Number((await getSetting(SETTING.lastParseAlertAt)) ?? 0);
   if (Date.now() - lastAlert < PARSE_ALERT_COOLDOWN_MS) return;
-  setSetting(SETTING.lastParseAlertAt, String(Date.now()));
+  await setSetting(SETTING.lastParseAlertAt, String(Date.now()));
 
   const text =
     `⚠️ Не удалось разобрать страницу pass.rw.by (${query.from} → ${query.to}, ${query.date}).\n` +
@@ -56,18 +58,23 @@ async function checkGroup(key: string, group: Tracker[]) {
   const ids = group.map((tracker) => tracker.id);
   const startedAt = new Date();
 
-  db.update(trackers).set({ forceCheckAt: null }).where(inArray(trackers.id, ids)).run();
+  await db.update(trackers).set({ forceCheckAt: null }).where(inArray(trackers.id, ids));
 
   let trains: TrainInfo[];
   try {
     trains = parseRoute(await fetchRouteHtml(query));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const status = error instanceof RateLimitedError ? "rate_limited" : error instanceof BrokenPageError ? "parse_error" : "fetch_error";
+    const status =
+      error instanceof RateLimitedError
+        ? "rate_limited"
+        : error instanceof BrokenPageError
+          ? "parse_error"
+          : "fetch_error";
 
     if (error instanceof RateLimitedError) pausedRoutes.set(key, Date.now() + RATE_LIMIT_PAUSE_MS);
-    db.update(trackers).set({ lastAttemptAt: startedAt, lastError: message }).where(inArray(trackers.id, ids)).run();
-    recordRun(key, startedAt, status, null, message);
+    await db.update(trackers).set({ lastAttemptAt: startedAt, lastError: message }).where(inArray(trackers.id, ids));
+    await recordRun(key, startedAt, status, null, message);
     log.error(`Check of ${key} failed (${status})`, message);
 
     if (error instanceof BrokenPageError) await alertBrokenPage(query);
@@ -79,26 +86,95 @@ async function checkGroup(key: string, group: Tracker[]) {
       await checkTracker(tracker, trains, new Date());
     } catch (error) {
       log.error(`Tracker #${tracker.id} check failed`, String(error));
-      db.update(trackers).set({ lastError: String(error) }).where(eq(trackers.id, tracker.id)).run();
+      await db.update(trackers).set({ lastError: String(error) }).where(eq(trackers.id, tracker.id));
     }
   }
-  recordRun(key, startedAt, "ok", trains.length);
+  await recordRun(key, startedAt, "ok", trains.length);
+}
+
+/** Returns true if this worker holds the lease. */
+export async function acquireLease(): Promise<boolean> {
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + LEASE_TTL_SEC * 1000);
+
+  // Try to claim the row: either we already hold it, or the existing lease has expired
+  const existing = await db.select().from(workerLease).limit(1);
+  if (existing.length === 0) {
+    try {
+      await db.insert(workerLease).values({ holder: holderId, expiresAt });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  const lease = existing[0];
+  const weHoldIt = lease.holder === holderId;
+  const isExpired = lease.expiresAt <= now;
+
+  if (!weHoldIt && !isExpired) {
+    return false;
+  }
+
+  const result = await db
+    .update(workerLease)
+    .set({ holder: holderId, expiresAt })
+    .where(
+      and(
+        eq(workerLease.id, lease.id),
+        weHoldIt ? eq(workerLease.holder, holderId) : lt(workerLease.expiresAt, sql`now()`),
+      ),
+    )
+    .returning();
+
+  return result.length > 0;
+}
+
+export async function releaseLease() {
+  await db
+    .update(workerLease)
+    .set({ expiresAt: new Date() })
+    .where(eq(workerLease.holder, holderId));
+}
+
+export async function processRouteSearches() {
+  const pending = await db
+    .select()
+    .from(routeSearches)
+    .where(eq(routeSearches.status, "pending"));
+
+  const now = Date.now();
+  for (const search of pending) {
+    try {
+      const html = await fetchRouteHtml({ from: search.fromName, to: search.toName, date: search.date });
+      const trains = parseRoute(html);
+      await db
+        .update(routeSearches)
+        .set({ status: "done", result: trains as unknown as Record<string, unknown>[] })
+        .where(eq(routeSearches.id, search.id));
+    } catch (error) {
+      await db
+        .update(routeSearches)
+        .set({ status: "error", error: error instanceof Error ? error.message : String(error) })
+        .where(eq(routeSearches.id, search.id));
+    }
+  }
+
+  // Clean up old searches (> 24h)
+  await db
+    .delete(routeSearches)
+    .where(lt(routeSearches.createdAt, new Date(now - 24 * 60 * 60 * 1000)));
 }
 
 export async function runTick(now = new Date()) {
-  db.update(trackers)
+  await db
+    .update(trackers)
     .set({ active: false })
-    .where(and(eq(trackers.active, true), lt(trackers.date, dateInMinsk(now))))
-    .run();
+    .where(and(eq(trackers.active, true), lt(trackers.date, dateInMinsk(now))));
 
-  const dueTrackers = db
-    .select()
-    .from(trackers)
-    .where(eq(trackers.active, true))
-    .all()
-    .filter((tracker) => isDue(tracker, now));
+  const allTrackers = await db.select().from(trackers).where(eq(trackers.active, true));
+  const dueTrackers = allTrackers.filter((tracker) => isDue(tracker, now));
 
-  // Trackers on the same route and date share one request.
   const groups = new Map<string, Tracker[]>();
   for (const tracker of dueTrackers) {
     const key = routeKey({ from: tracker.fromName, to: tracker.toName, date: tracker.date });

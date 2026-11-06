@@ -1,4 +1,5 @@
-import { existsSync, rmSync } from "node:fs";
+import { type PGlite } from "@electric-sql/pglite";
+import { migrate } from "drizzle-orm/pglite/migrator";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrainInfo } from "../src/lib/rw/types";
@@ -8,8 +9,6 @@ vi.mock("../src/lib/notify/telegram", () => ({
   sendOwnerMessage: (text: string) => sendOwnerMessage(text),
   getOwnerChatId: () => 42,
 }));
-
-const dbFile = path.join("data", `test-${process.pid}.db`);
 
 type Module = {
   checkTracker: typeof import("../src/worker/check").checkTracker;
@@ -36,16 +35,19 @@ const train = (platz: number, coupe = 0): TrainInfo => ({
 const at = (minute: number) => new Date(Date.UTC(2026, 10, 6, 10, minute));
 
 async function run(trains: TrainInfo[], minute: number) {
-  const tracker = mod.getTracker(trackerId)!;
+  const tracker = await mod.getTracker(trackerId);
+  if (!tracker) throw new Error("tracker not found");
   await mod.checkTracker(tracker, trains, at(minute));
-  return mod.getTracker(trackerId)!;
+  return mod.getTracker(trackerId);
 }
 
-const eventRows = () =>
-  mod.db.select().from(mod.events).all().map((row) => ({ kind: row.kind, seatType: row.seatType, curr: row.curr }));
+const eventRows = async () => {
+  const rows = await mod.db.select().from(mod.events);
+  return rows.map((row) => ({ kind: row.kind, seatType: row.seatType, curr: row.curr }));
+};
 
 beforeAll(async () => {
-  process.env.DATABASE_PATH = dbFile;
+  process.env.DATABASE_URL = "pglite:memory";
   mod = {
     checkTracker: (await import("../src/worker/check")).checkTracker,
     createTrackers: (await import("../src/lib/trackers")).createTrackers,
@@ -53,14 +55,17 @@ beforeAll(async () => {
     events: (await import("../src/lib/db/schema")).events,
     db: (await import("../src/lib/db")).db,
   };
+  // Apply migrations to in-memory pglite
+  await migrate(mod.db as Parameters<typeof migrate>[0], {
+    migrationsFolder: path.resolve(process.cwd(), "drizzle"),
+  });
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   sendOwnerMessage.mockReset();
   sendOwnerMessage.mockResolvedValue(undefined);
-  mod.db.delete(mod.events).run();
-  mod.db.$client.exec("DELETE FROM seat_state; DELETE FROM trackers;");
-  const [created] = mod.createTrackers([
+  await (mod.db.$client as PGlite).exec("DELETE FROM rw.events; DELETE FROM rw.seat_state; DELETE FROM rw.trackers;");
+  const [created] = await mod.createTrackers([
     {
       fromName: "Минск",
       toName: "Гродно",
@@ -78,18 +83,16 @@ beforeEach(() => {
   trackerId = created.id;
 });
 
-afterAll(() => {
-  mod?.db.$client.close();
-  for (const suffix of ["", "-wal", "-shm"]) rmSync(dbFile + suffix, { force: true });
-  expect(existsSync(dbFile)).toBe(false);
+afterAll(async () => {
+  await (mod?.db.$client as PGlite)?.close();
 });
 
 describe("checkTracker", () => {
   it("records a baseline on the first check without notifying", async () => {
     await run([train(0, 3)], 0);
     expect(sendOwnerMessage).not.toHaveBeenCalled();
-    expect(eventRows()).toEqual([]);
-    expect(mod.getTracker(trackerId)!.lastSuccessAt).not.toBeNull();
+    expect(await eventRows()).toEqual([]);
+    expect((await mod.getTracker(trackerId))!.lastSuccessAt).not.toBeNull();
   });
 
   it("notifies once when seats appear, and not again on the same state", async () => {
@@ -97,7 +100,7 @@ describe("checkTracker", () => {
     await run([train(4, 3)], 2);
     expect(sendOwnerMessage).toHaveBeenCalledTimes(1);
     expect(sendOwnerMessage.mock.calls[0][0]).toContain("🟢 Плацкартный: 0 → 4");
-    expect(eventRows()).toEqual([{ kind: "appeared", seatType: "platz", curr: 4 }]);
+    expect(await eventRows()).toEqual([{ kind: "appeared", seatType: "platz", curr: 4 }]);
 
     await run([train(4, 3)], 4);
     expect(sendOwnerMessage).toHaveBeenCalledTimes(1);
@@ -118,19 +121,22 @@ describe("checkTracker", () => {
     sendOwnerMessage.mockRejectedValueOnce(new Error("network down"));
     await expect(run([train(5, 3)], 2)).rejects.toThrow("network down");
 
-    const unsent = mod.db.select().from(mod.events).all().filter((row) => row.notifiedAt === null);
+    const allEvents = await mod.db.select().from(mod.events);
+    const unsent = allEvents.filter((row) => row.notifiedAt === null);
     expect(unsent).toHaveLength(1);
 
     await run([train(5, 3)], 4);
     expect(sendOwnerMessage).toHaveBeenCalledTimes(2);
-    expect(mod.db.select().from(mod.events).all().every((row) => row.notifiedAt !== null)).toBe(true);
+    const afterRetry = await mod.db.select().from(mod.events);
+    expect(afterRetry.every((row) => row.notifiedAt !== null)).toBe(true);
   });
 
   it("does not treat a missing train as sold out", async () => {
     await run([train(4, 3)], 0);
-    const tracker = mod.getTracker(trackerId)!;
+    const tracker = await mod.getTracker(trackerId);
+    if (!tracker) throw new Error("tracker not found");
     await mod.checkTracker(tracker, [], at(2));
     expect(sendOwnerMessage).not.toHaveBeenCalled();
-    expect(mod.getTracker(trackerId)!.lastError).toContain("не найден");
+    expect((await mod.getTracker(trackerId))!.lastError).toContain("не найден");
   });
 });

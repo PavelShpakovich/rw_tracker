@@ -8,6 +8,7 @@ import { AUTH_COOKIE, sessionToken } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { sendOwnerMessage } from "@/lib/notify/telegram";
 import {
+  createRouteSearch,
   createTrackers,
   deleteTracker,
   listTrackers,
@@ -66,26 +67,27 @@ export async function createTrackersAction(formData: FormData) {
     redirect(`/trackers/new?${new URLSearchParams({ from, to, date, error: "none" })}`);
   }
 
-  createTrackers(inputs);
+  await createTrackers(inputs);
   revalidatePath("/");
   redirect("/");
 }
 
 export async function setActiveAction(formData: FormData) {
   const id = idSchema.parse(formData.get("id"));
-  setTrackerActive(id, formData.get("active") === "true");
+  await setTrackerActive(id, formData.get("active") === "true");
   refreshTracker(id);
 }
 
 export async function requestCheckAction(formData: FormData) {
   const raw = String(formData.get("id"));
-  const ids = raw === "all" ? listTrackers().map((tracker) => tracker.id) : [idSchema.parse(raw)];
-  requestCheck(ids);
+  const trackerList = await listTrackers();
+  const ids = raw === "all" ? trackerList.map((tracker) => tracker.id) : [idSchema.parse(raw)];
+  await requestCheck(ids);
   revalidatePath("/");
 }
 
 export async function deleteTrackerAction(formData: FormData) {
-  deleteTracker(idSchema.parse(formData.get("id")));
+  await deleteTracker(idSchema.parse(formData.get("id")));
   revalidatePath("/");
   redirect("/");
 }
@@ -112,7 +114,21 @@ export async function loginAction(formData: FormData) {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 30,
+    maxAge: 60 * 60 * 24 * 90,
+    secure: process.env.NODE_ENV === "production",
   });
   redirect("/");
+}
+
+export async function searchRouteAction(formData: FormData) {
+  const from = String(formData.get("from") ?? "").trim();
+  const to = String(formData.get("to") ?? "").trim();
+  const date = String(formData.get("date") ?? "").trim();
+
+  if (!from || !to || !date) {
+    redirect("/trackers/new");
+  }
+
+  const id = await createRouteSearch(from, to, date);
+  redirect(`/trackers/new?search=${id}`);
 }

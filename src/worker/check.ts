@@ -15,16 +15,11 @@ interface Observation {
   priceByn: number | null;
 }
 
-// "Sold out" readings waiting for confirmation, per tracker. In memory on purpose:
-// after a restart the confirmation simply starts again.
-const pendingSoldOut = new Map<number, Set<SeatType>>();
-
 /** Sums seat counts of the tracked train across all matching rows. Null if the train is not listed. */
 export function observeTracker(tracker: Tracker, trains: TrainInfo[]): Map<SeatType, Observation> | null {
   const matching = trains.filter((train) => train.number === tracker.trainNumber);
   if (matching.length === 0) return null;
 
-  // A tracked seat type missing from the listing means zero seats, not "unknown".
   const observed = new Map<SeatType, Observation>();
   for (const seatType of tracker.seatTypes) observed.set(seatType, { count: 0, priceByn: null });
 
@@ -47,18 +42,15 @@ function lowestPrice(a: number | null, b: number | null): number | null {
   return Math.min(a, b);
 }
 
-function applyObservation(tracker: Tracker, observed: Map<SeatType, Observation>, now: Date) {
-  const previous = new Map(
-    db
-      .select()
-      .from(seatState)
-      .where(eq(seatState.trackerId, tracker.id))
-      .all()
-      .map((row) => [row.seatType, row.count]),
-  );
-  const current = new Map([...observed].map(([seatType, { count }]) => [seatType, count]));
+async function applyObservation(tracker: Tracker, observed: Map<SeatType, Observation>, now: Date) {
+  const stateRows = await db.select().from(seatState).where(eq(seatState.trackerId, tracker.id));
 
-  // The first successful check only records a baseline.
+  const previous = new Map(stateRows.map((row) => [row.seatType, row.count]));
+  const current = new Map([...observed].map(([seatType, { count }]) => [seatType, count]));
+  const persistedPendingSoldOut = new Set(
+    stateRows.filter((row) => row.pendingSoldOut).map((row) => row.seatType),
+  );
+
   const isBaseline = tracker.lastSuccessAt === null;
   const changes = isBaseline
     ? []
@@ -70,51 +62,64 @@ function applyObservation(tracker: Tracker, observed: Map<SeatType, Observation>
         notifyOn: tracker.notifyOn,
       });
 
-  const { emit, deferred } = confirmSoldOut(changes, pendingSoldOut.get(tracker.id) ?? new Set());
-  pendingSoldOut.set(tracker.id, deferred);
+  const { emit, deferred } = confirmSoldOut(changes, persistedPendingSoldOut);
 
-  db.transaction((tx) => {
+  await db.transaction(async (tx) => {
     for (const [seatType, { count, priceByn }] of observed) {
-      // Deferred types keep their old state so the next check still sees the transition.
-      if (deferred.has(seatType)) continue;
-      tx.insert(seatState)
-        .values({ trackerId: tracker.id, seatType, count, priceByn, updatedAt: now })
+      const isPendingSoldOut = deferred.has(seatType);
+      if (isPendingSoldOut) continue;
+      await tx
+        .insert(seatState)
+        .values({ trackerId: tracker.id, seatType, count, priceByn, updatedAt: now, pendingSoldOut: false })
         .onConflictDoUpdate({
           target: [seatState.trackerId, seatState.seatType],
-          set: { count, priceByn, updatedAt: now },
+          set: { count, priceByn, updatedAt: now, pendingSoldOut: false },
+        });
+    }
+
+    // Update pendingSoldOut flag for deferred types
+    for (const seatType of deferred) {
+      await tx
+        .insert(seatState)
+        .values({
+          trackerId: tracker.id,
+          seatType,
+          count: observed.get(seatType)?.count ?? 0,
+          priceByn: observed.get(seatType)?.priceByn ?? null,
+          updatedAt: now,
+          pendingSoldOut: true,
         })
-        .run();
+        .onConflictDoUpdate({
+          target: [seatState.trackerId, seatState.seatType],
+          set: { pendingSoldOut: true, updatedAt: now },
+        });
     }
 
     for (const event of emit) {
-      tx.insert(events)
-        .values({
-          trackerId: tracker.id,
-          at: now,
-          kind: event.kind,
-          seatType: event.seatType,
-          prev: event.prev,
-          curr: event.curr,
-          priceByn: observed.get(event.seatType)?.priceByn ?? null,
-        })
-        .run();
+      await tx.insert(events).values({
+        trackerId: tracker.id,
+        at: now,
+        kind: event.kind,
+        seatType: event.seatType,
+        prev: event.prev,
+        curr: event.curr,
+        priceByn: observed.get(event.seatType)?.priceByn ?? null,
+      });
     }
 
-    tx.update(trackers)
+    await tx
+      .update(trackers)
       .set({ lastAttemptAt: now, lastSuccessAt: now, lastError: null })
-      .where(eq(trackers.id, tracker.id))
-      .run();
+      .where(eq(trackers.id, tracker.id));
   });
 }
 
-/** Sends every event of this tracker that has not been delivered yet, including ones left over from a failed send. */
 async function notifyPending(tracker: Tracker) {
-  const unsent = db
+  const unsent = await db
     .select()
     .from(events)
     .where(and(eq(events.trackerId, tracker.id), isNull(events.notifiedAt)))
-    .orderBy(asc(events.at))
-    .all();
+    .orderBy(asc(events.at));
   if (unsent.length === 0) return;
 
   if (getOwnerChatId() === null) {
@@ -123,22 +128,22 @@ async function notifyPending(tracker: Tracker) {
   }
 
   await sendOwnerMessage(formatTrackerMessage(tracker, unsent));
-  db.update(events)
+  await db
+    .update(events)
     .set({ notifiedAt: new Date() })
-    .where(inArray(events.id, unsent.map((event) => event.id)))
-    .run();
+    .where(inArray(events.id, unsent.map((event) => event.id)));
 }
 
 export async function checkTracker(tracker: Tracker, trains: TrainInfo[], now: Date) {
   const observed = observeTracker(tracker, trains);
   if (!observed) {
-    db.update(trackers)
+    await db
+      .update(trackers)
       .set({ lastAttemptAt: now, lastError: "Поезд не найден в выдаче pass.rw.by" })
-      .where(eq(trackers.id, tracker.id))
-      .run();
+      .where(eq(trackers.id, tracker.id));
     return;
   }
 
-  applyObservation(tracker, observed, now);
+  await applyObservation(tracker, observed, now);
   await notifyPending(tracker);
 }

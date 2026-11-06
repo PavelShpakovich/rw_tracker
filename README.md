@@ -2,41 +2,76 @@
 
 Следит за свободными местами на выбранные поезда на [pass.rw.by](https://pass.rw.by) и присылает уведомления в Telegram.
 
-- Веб-интерфейс (Next.js): создание трекеров, история изменений, настройки.
-- Воркер: проверяет расписание каждые 30 секунд, учитывает интервал каждого трекера и отправляет уведомления.
-- Уведомления в Telegram приходят от существующего бота (`@my_llm_pizduk_bot`). Бот только отправляет сообщения: polling не запускается, webhook продакшн-бота не трогается. Управление трекерами через веб-интерфейс.
+```
+Телефон (PWA) ─HTTPS─> Vercel (Next.js UI + пароль) ──> Supabase Postgres (схема rw)
+                                                          ▲
+Любое устройство: `pnpm worker` или Docker ───────────────┘──> pass.rw.by ──> Telegram
+```
 
-Данные хранятся в SQLite (`data/app.db`). Открытого API у pass.rw.by нет, поэтому страница маршрута (`/ru/route/`) разбирается как HTML. Пути `/ajax/` и `/api/` в `robots.txt` закрыты, и приложение к ним не обращается.
+- **Веб-интерфейс (Next.js):** создание трекеров, история изменений, настройки. Устанавливается как PWA с домашнего экрана телефона.
+- **Воркер:** проверяет расписание каждые 30 секунд, отправляет уведомления в Telegram. Запускается на любом устройстве с Node 22+.
+- **База данных:** Supabase Postgres (или локальный PGlite без настройки).
+- **Уведомления:** бот в Telegram только отправляет сообщения; polling и webhook не используются.
 
-## Установка
+## Установка и запуск локально
 
 ```bash
 pnpm install
 cp .env.example .env   # заполнить TELEGRAM_BOT_TOKEN и TELEGRAM_ALLOWED_USER_ID
-pnpm db:generate       # только если меняли src/lib/db/schema.ts
+pnpm dev               # Next.js на http://localhost:3000 + воркер
 ```
 
-- `TELEGRAM_BOT_TOKEN`: токен бота `@my_llm_pizduk_bot` (из `BOT_TOKEN` в `tg-bot/.env`). Не копируйте в другие места.
-- `TELEGRAM_ALLOWED_USER_ID`: ваш числовой ID, узнать у [@userinfobot](https://t.me/userinfobot). Уведомления идут в личный чат с этим ID.
-- Один раз откройте бота в Telegram и нажмите **Start**, иначе Telegram не разрешит ему писать первым.
+Локально база хранится в `data/pg` (PGlite). Миграции применяются автоматически при старте воркера.
 
-## Запуск
+### Переменные окружения
+
+| Переменная | Описание |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | Токен бота из @BotFather |
+| `TELEGRAM_ALLOWED_USER_ID` | Ваш числовой Telegram ID (узнать у @userinfobot) |
+| `APP_PASSWORD` | Пароль для веб-интерфейса (обязателен на Vercel) |
+| `DATABASE_URL` | URL базы. По умолчанию `pglite:./data/pg` |
+| `DEFAULT_INTERVAL_SEC` | Интервал проверки в секундах (мин. 60, по умолчанию 120) |
+
+## Деплой на Vercel + Supabase
+
+### 1. База данных (Supabase)
+
+1. В [Supabase Dashboard](https://supabase.com/dashboard) откройте или создайте проект.
+2. Settings → Database → **Transaction pooler** URI (порт 6543). Вставьте в `.env` как `DATABASE_URL`.
+3. Примените миграции: `pnpm db:migrate` (или запустите воркер — он применяет их автоматически).
+
+### 2. GitHub и Vercel
+
+1. Запушьте репозиторий на GitHub.
+2. В Vercel: **Add New → Project → Import** `PavelShpakovich/rw_tracker`.
+3. Установите переменные окружения: `DATABASE_URL`, `APP_PASSWORD`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USER_ID`.
+4. Нажмите **Deploy**. `APP_PASSWORD` обязателен — без него Vercel вернёт 503.
+
+### 3. Воркер на любом устройстве
 
 ```bash
-pnpm dev        # веб-интерфейс на http://localhost:3000 и воркер (с перезапуском при изменениях)
-pnpm start      # production: next start + воркер (сначала pnpm build)
-pnpm worker:once  # одна проверка всех трекеров и выход
+git clone https://github.com/PavelShpakovich/rw_tracker.git
+cd rw_tracker
+pnpm install
+# Создать .env с DATABASE_URL (Supabase) и Telegram-переменными
+pnpm worker
 ```
 
-Проверить доставку: в веб-интерфейсе `/settings` нажмите «Отправить тестовое сообщение».
+Поиск поездов при создании трекера выполняется воркером, а не Vercel. Если воркер не запущен, форма покажет предупреждение.
 
-Проверить разбор конкретного маршрута без базы:
+### Docker
 
 ```bash
-pnpm check-route -- --from Минск --to Гродно --date 2026-11-20
+docker build -f Dockerfile.worker -t rw-worker .
+docker run --env-file .env rw-worker
 ```
 
-## Автозапуск на macOS
+Несколько воркеров безопасны: lease-механизм обеспечивает только один активный воркер.
+
+## Автозапуск (опционально)
+
+### macOS (launchd)
 
 ```bash
 PROJECT_DIR="$(pwd)"
@@ -44,26 +79,41 @@ sed "s#__PROJECT_DIR__#$PROJECT_DIR#g" launchd/by.rw.tracker.plist > ~/Library/L
 launchctl load ~/Library/LaunchAgents/by.rw.tracker.plist
 ```
 
-Остановить: `launchctl unload ~/Library/LaunchAgents/by.rw.tracker.plist`. Лог: `data/launchd.log`.
+Остановить: `launchctl unload ~/Library/LaunchAgents/by.rw.tracker.plist`
+
+### Linux (systemd)
+
+```ini
+[Unit]
+Description=RW Tracker Worker
+
+[Service]
+WorkingDirectory=/path/to/rw-tracker
+ExecStart=pnpm worker
+Restart=on-failure
+EnvironmentFile=/path/to/rw-tracker/.env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+## PWA (установка на телефон)
+
+- **Safari (iOS):** кнопка «Поделиться» → «На экран Домой».
+- **Chrome (Android):** кнопка меню → «Добавить на главный экран».
 
 ## Как работает проверка
 
 1. Трекер = маршрут + дата + поезд + типы мест. Трекеры с одинаковыми станциями и датой делят один HTTP-запрос.
 2. Первая успешная проверка только запоминает текущие места (базовая линия), уведомлений нет.
-3. Дальше сравнивается каждый тип мест с предыдущим значением:
-   - появились места (стало ≥ порога);
-   - мест стало больше или меньше (при значениях не ниже порога);
-   - места закончились (стало ниже порога).
-4. «Закончились» отправляется только если значение подтвердилось на следующей проверке, чтобы не реагировать на сбой сайта.
-5. Если разметка страницы не распознана, воркер не считает места нулевыми, а раз в час шлёт предупреждение.
-6. Неотправленные события (например, при сбое Telegram) повторяются при следующей проверке.
-
-Telegram-команд нет: трекеры создаются, ставятся на паузу и проверяются через веб-интерфейс.
+3. Дальше сравнивается каждый тип мест с предыдущим значением.
+4. «Закончились» отправляется только если значение подтвердилось на следующей проверке.
+5. Поиск поездов при создании трекера выполняется воркером; Vercel к pass.rw.by не обращается.
 
 ## Проверки
 
 ```bash
-pnpm test        # парсер на сохранённой странице, diff, сообщения и воркер
+pnpm test        # парсер, diff, сообщения и воркер
 pnpm typecheck
 pnpm lint
 ```
@@ -72,12 +122,13 @@ pnpm lint
 
 ```
 src/app/           веб-интерфейс и server actions
-src/proxy.ts       пароль из APP_PASSWORD (если задан)
+src/proxy.ts       пароль из APP_PASSWORD
 src/lib/rw/        клиент и парсер pass.rw.by
 src/lib/diff.ts    сравнение состояний и подтверждение «закончились»
 src/lib/notify/    форматирование сообщений и отправка в Telegram
-src/lib/db/        схема Drizzle и подключение к SQLite
-src/worker/        планировщик, проверка трекеров, Telegram-бот
-scripts/           CLI для проверки маршрута
-tests/             тесты и сохранённые HTML-страницы
+src/lib/db/        схема Drizzle и подключение к Postgres/PGlite
+src/worker/        планировщик, lease, проверка трекеров, поиск маршрутов
+drizzle/           SQL-миграции
+scripts/           migrate.ts, check-route.ts
+Dockerfile.worker  воркер в Docker
 ```
