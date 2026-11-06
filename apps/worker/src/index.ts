@@ -33,7 +33,14 @@ async function main() {
     if (!running) break;
 
     const now = Date.now();
-    const hasLease = await acquireLease();
+    let hasLease: boolean;
+    try {
+      hasLease = await acquireLease();
+    } catch (error) {
+      log.error("Lease check failed, retrying", String(error));
+      await sleep(SEARCH_INTERVAL_MS);
+      continue;
+    }
 
     if (!hasLease) {
       log.info("Another worker holds the lease, standing by");
