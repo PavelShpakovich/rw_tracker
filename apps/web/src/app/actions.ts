@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { AUTH_COOKIE, sessionToken } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { sendOwnerMessage } from "@rw/core/telegram";
+import { broadcast } from "@rw/core/telegram";
 import { trackerInputSchema } from "@/lib/tracker-input";
 import {
   createRouteSearch,
@@ -16,8 +16,14 @@ import {
   requestCheck,
   setTrackerActive,
 } from "@rw/db/trackers";
+import { addRecipient, listRecipientIds, removeRecipient } from "@rw/db/recipients";
 
 const idSchema = z.coerce.number().int().positive();
+
+const recipientSchema = z.object({
+  chatId: idSchema,
+  label: z.string().trim().max(64),
+});
 
 const trainsSchema = z.array(
   z.object({
@@ -93,13 +99,34 @@ export async function deleteTrackerAction(formData: FormData) {
 }
 
 export async function sendTestAction() {
-  let ok = true;
-  try {
-    await sendOwnerMessage("Тест: уведомления работают ✅");
-  } catch {
-    ok = false;
+  const recipientIds = await listRecipientIds();
+  let query: URLSearchParams;
+  if (recipientIds.length === 0) {
+    query = new URLSearchParams({ test: "none" });
+  } else {
+    try {
+      const { sent, failed } = await broadcast(recipientIds, "Тест: уведомления работают ✅");
+      const status = failed.length === 0 ? "ok" : sent.length > 0 ? "partial" : "error";
+      query = new URLSearchParams({ test: status, sent: String(sent.length), failed: String(failed.length) });
+    } catch {
+      query = new URLSearchParams({ test: "error" });
+    }
   }
-  redirect(`/settings?test=${ok ? "ok" : "error"}`);
+  redirect(`/settings?${query}`);
+}
+
+export async function addRecipientAction(formData: FormData) {
+  const { chatId, label } = recipientSchema.parse({
+    chatId: formData.get("chatId"),
+    label: String(formData.get("label") ?? ""),
+  });
+  await addRecipient(chatId, label || null);
+  revalidatePath("/settings");
+}
+
+export async function removeRecipientAction(formData: FormData) {
+  await removeRecipient(idSchema.parse(formData.get("chatId")));
+  revalidatePath("/settings");
 }
 
 export async function loginAction(formData: FormData) {

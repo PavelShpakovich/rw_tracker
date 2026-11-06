@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   doublePrecision,
   index,
@@ -80,6 +81,12 @@ export const checkRuns = rw.table("check_runs", {
 export const settings = rw.table("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
+});
+
+export const telegramRecipients = rw.table("telegram_recipients", {
+  chatId: bigint("chat_id", { mode: "number" }).primaryKey(),
+  label: text("label"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
 });
 
 export const workerLease = rw.table("worker_lease", {

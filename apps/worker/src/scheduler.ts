@@ -4,7 +4,8 @@ import { db } from "@rw/db/client";
 import { checkRuns, routeSearches, trackers, workerLease } from "@rw/db/schema";
 import { dateInMinsk } from "@rw/core/format";
 import { log } from "./log";
-import { sendOwnerMessage } from "@rw/core/telegram";
+import { broadcast } from "@rw/core/telegram";
+import { listRecipientIds } from "@rw/db/recipients";
 import { fetchRouteHtml, RateLimitedError } from "./rw/client";
 import { BrokenPageError, parseRoute } from "./rw/parser";
 import type { RouteQuery, TrainInfo } from "@rw/core/rw-types";
@@ -50,7 +51,12 @@ async function alertBrokenPage(query: RouteQuery) {
   const text =
     `⚠️ Не удалось разобрать страницу pass.rw.by (${query.from} → ${query.to}, ${query.date}).\n` +
     "Возможно, вёрстка сайта изменилась. Проверки продолжаются, но уведомления могут не приходить.";
-  await sendOwnerMessage(text).catch((error) => log.error("Failed to send parse alert", String(error)));
+  try {
+    const result = await broadcast(await listRecipientIds(), text);
+    for (const failure of result.failed) log.error(`Failed to send parse alert to ${failure.chatId}`, failure.error);
+  } catch (error) {
+    log.error("Failed to send parse alert", String(error));
+  }
 }
 
 async function checkGroup(key: string, group: Tracker[]) {

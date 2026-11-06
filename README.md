@@ -31,7 +31,7 @@ launchd/           автозапуск воркера на macOS
 
 ```bash
 pnpm install
-cp .env.example .env             # заполнить TELEGRAM_BOT_TOKEN и TELEGRAM_ALLOWED_USER_ID
+cp .env.example .env             # заполнить TELEGRAM_BOT_TOKEN
 ln -s ../../.env apps/web/.env   # веб читает .env из своей папки; файл один
 pnpm dev                         # Next.js на http://localhost:3000 + воркер
 ```
@@ -43,10 +43,11 @@ pnpm dev                         # Next.js на http://localhost:3000 + ворк
 | Переменная | Описание |
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | Токен бота из @BotFather |
-| `TELEGRAM_ALLOWED_USER_ID` | Ваш числовой Telegram ID (узнать у @userinfobot) |
 | `APP_PASSWORD` | Пароль для веб-интерфейса (обязателен на Vercel) |
 | `DATABASE_URL` | URL базы. По умолчанию `pglite:./data/pg` (локальный файл) |
 | `DEFAULT_INTERVAL_SEC` | Интервал проверки в секундах (мин. 60, по умолчанию 120) |
+
+Получатели уведомлений добавляются на странице «Настройки» (Telegram ID из @userinfobot). Каждый получатель должен один раз открыть бота и нажать Start.
 
 Один `.env` в корне читают воркер и скрипты. Веб читает его через симлинк `apps/web/.env`. На Vercel переменные задаются в дашборде.
 
@@ -62,7 +63,7 @@ pnpm dev                         # Next.js на http://localhost:3000 + ворк
 
 1. **Add New → Project → Import** `PavelShpakovich/rw_tracker`.
 2. **Root Directory:** `apps/web`. Framework определится как Next.js.
-3. Переменные окружения: `DATABASE_URL`, `APP_PASSWORD`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USER_ID`.
+3. Переменные окружения: `DATABASE_URL`, `APP_PASSWORD`, `TELEGRAM_BOT_TOKEN`.
 4. Deploy. `APP_PASSWORD` обязателен: без него Vercel вернёт 503.
 
 ### 3. Воркер на любом устройстве
