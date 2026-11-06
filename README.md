@@ -10,7 +10,7 @@
 
 - **Веб-интерфейс (`apps/web`, Next.js):** создание трекеров, история изменений, настройки. Устанавливается как PWA с домашнего экрана телефона.
 - **Воркер (`apps/worker`):** проверяет расписание каждые 30 секунд, ищет поезда по запросу из веб-интерфейса, отправляет уведомления в Telegram. Запускается на любом устройстве с Node 22+.
-- **База данных:** Supabase Postgres (или локальный PGlite без настройки).
+- **База данных:** Supabase Postgres. Локальной файловой БД нет.
 - **Уведомления:** бот в Telegram только отправляет сообщения; polling и webhook не используются.
 
 ## Структура
@@ -21,7 +21,7 @@
 apps/web/          Next.js: UI, server actions, пароль (деплоится на Vercel)
 apps/worker/       проверки pass.rw.by, поиск маршрутов, уведомления, Dockerfile
 packages/core/     общие типы, форматирование, Telegram-клиент (без БД и Next)
-packages/db/       схема Drizzle, подключение Postgres/PGlite, миграции, запросы
+packages/db/       схема Drizzle, подключение к Supabase Postgres, миграции, запросы
 launchd/           автозапуск воркера на macOS
 ```
 
@@ -31,25 +31,27 @@ launchd/           автозапуск воркера на macOS
 
 ```bash
 pnpm install
-cp .env.example .env             # заполнить TELEGRAM_BOT_TOKEN
-ln -s ../../.env apps/web/.env   # веб читает .env из своей папки; файл один
+cp .env.example .env             # заполнить DATABASE_URL из Supabase и TELEGRAM_BOT_TOKEN
 pnpm dev                         # Next.js на http://localhost:3000 + воркер
 ```
+
+Локальный веб и воркер подключаются к указанной базе Supabase и изменяют её данные. Не запускайте команды с изменениями, если не хотите затронуть production.
+Web-команды автоматически читают корневой `.env`; симлинк в `apps/web` не нужен. Если `pnpm` не распознаётся в PowerShell, используйте `corepack pnpm dev` или перезапустите VS Code после установки pnpm.
 
 Миграции применяются при старте воркера. Вручную: `pnpm db:migrate`.
 
 ### Переменные окружения
 
-| Переменная | Описание |
-|---|---|
-| `TELEGRAM_BOT_TOKEN` | Токен бота из @BotFather |
-| `APP_PASSWORD` | Пароль для веб-интерфейса (обязателен на Vercel) |
-| `DATABASE_URL` | URL базы. По умолчанию `pglite:./data/pg` (локальный файл) |
+| Переменная             | Описание                                                 |
+| ---------------------- | -------------------------------------------------------- |
+| `TELEGRAM_BOT_TOKEN`   | Токен бота из @BotFather                                 |
+| `APP_PASSWORD`         | Пароль для веб-интерфейса (обязателен на Vercel)         |
+| `DATABASE_URL`         | Обязательная строка подключения Supabase Postgres        |
 | `DEFAULT_INTERVAL_SEC` | Интервал проверки в секундах (мин. 60, по умолчанию 120) |
 
 Получатели уведомлений добавляются на странице «Настройки» (Telegram ID из @userinfobot). Каждый получатель должен один раз открыть бота и нажать Start.
 
-Один `.env` в корне читают воркер и скрипты. Веб читает его через симлинк `apps/web/.env`. На Vercel переменные задаются в дашборде.
+Один `.env` в корне читают web-команды, воркер и скрипты. На Vercel переменные задаются в дашборде.
 
 ## Деплой на Vercel + Supabase
 
@@ -72,8 +74,7 @@ pnpm dev                         # Next.js на http://localhost:3000 + ворк
 git clone https://github.com/PavelShpakovich/rw_tracker.git
 cd rw_tracker
 pnpm install
-# создать .env с DATABASE_URL (Supabase) и Telegram-переменными
-ln -s ../../.env apps/web/.env   # нужно только для веба
+# создать .env с production DATABASE_URL из Supabase и Telegram-переменными
 pnpm worker
 ```
 
@@ -103,7 +104,7 @@ pnpm worker:once      # одна проверка всех трекеров и �
 pnpm check-route -- --from Минск --to Гродно --date 2026-11-20   # разбор маршрута без базы
 pnpm db:generate      # новая миграция после изменения packages/db/src/schema.ts
 pnpm db:migrate       # применить миграции
-pnpm test
+pnpm test              # тесты используют изолированную PGlite только в памяти
 pnpm typecheck
 pnpm lint
 ```

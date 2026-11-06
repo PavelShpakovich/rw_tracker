@@ -3,19 +3,35 @@ import { drizzle as pgliteDrizzle } from "drizzle-orm/pglite";
 import { drizzle as postgresDrizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
+import { isSupabaseDatabaseUrl } from "./database-url";
 
-const databaseUrl = process.env.DATABASE_URL ?? "pglite:./data/pg";
-export const usesPostgres = databaseUrl.startsWith("postgres://") || databaseUrl.startsWith("postgresql://");
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  throw new Error(
+    "DATABASE_URL is required. Set it to the Supabase PostgreSQL connection string.",
+  );
+}
+const connectionString: string = databaseUrl;
+
+const isTestPglite =
+  process.env.NODE_ENV === "test" && connectionString === "pglite:memory";
+const usesPostgres = isSupabaseDatabaseUrl(connectionString);
+if (!isTestPglite && !usesPostgres) {
+  throw new Error(
+    "DATABASE_URL must point to a Supabase PostgreSQL host. PGlite is only allowed in in-memory tests.",
+  );
+}
+
+export { usesPostgres };
 
 function createDb() {
-  if (usesPostgres) {
-    const client = postgres(databaseUrl, { prepare: false, max: 5 });
-    return postgresDrizzle(client, { schema });
+  if (isTestPglite) {
+    const client = new PGlite();
+    return pgliteDrizzle(client, { schema });
   }
-  // pglite — local/test
-  const dataDir = databaseUrl.startsWith("pglite:") ? databaseUrl.slice("pglite:".length) : databaseUrl;
-  const client = new PGlite(dataDir === "memory" ? undefined : dataDir);
-  return pgliteDrizzle(client, { schema });
+
+  const client = postgres(connectionString, { prepare: false, max: 5 });
+  return postgresDrizzle(client, { schema });
 }
 
 type Db = ReturnType<typeof createDb>;

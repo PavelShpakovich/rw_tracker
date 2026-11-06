@@ -1,28 +1,35 @@
 import { redirect } from "next/navigation";
 import { env } from "@/lib/env";
 import { loginAction } from "../actions";
+import { SubmitButton } from "@/components/form-controls";
+import { Field, Input, Notice } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   if (!env.APP_PASSWORD) redirect("/");
   const { error } = await searchParams;
 
   return (
-    <form action={loginAction} className="mx-auto mt-16 flex max-w-xs flex-col gap-3">
-      <h1 className="text-xl font-semibold">Вход</h1>
-      <input
-        name="password"
-        type="password"
-        required
-        autoFocus
-        placeholder="Пароль"
-        className="rounded border border-black/20 bg-transparent px-2 py-1.5 text-sm dark:border-white/20"
-      />
-      {error ? <p className="text-sm text-red-600">Неверный пароль</p> : null}
-      <button type="submit" className="rounded bg-foreground px-4 py-1.5 text-sm text-background">
-        Войти
-      </button>
-    </form>
+    <div className="mx-auto max-w-sm pt-6 sm:pt-16">
+      <h1 className="text-4xl font-semibold tracking-tight">Вход</h1>
+      <form action={loginAction} className="mt-8 space-y-5 border-t border-foreground pt-6">
+        <Field label="Пароль">
+          <Input
+            name="password"
+            type="password"
+            required
+            autoFocus
+            autoComplete="current-password"
+          />
+        </Field>
+        {error ? <Notice tone="danger" role="alert">Неверный пароль.</Notice> : null}
+        <SubmitButton className="w-full">Войти</SubmitButton>
+      </form>
+    </div>
   );
 }

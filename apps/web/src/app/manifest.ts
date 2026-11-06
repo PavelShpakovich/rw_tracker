@@ -7,16 +7,11 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Отслеживание свободных мест на поезда БЖД",
     start_url: "/",
     display: "standalone",
-    background_color: "#000000",
-    theme_color: "#000000",
+    background_color: "#f2efe6",
+    theme_color: "#f4b400",
     icons: [
       {
-        src: "/icon?size=192",
-        sizes: "192x192",
-        type: "image/png",
-      },
-      {
-        src: "/icon?size=512",
+        src: "/icon",
         sizes: "512x512",
         type: "image/png",
       },

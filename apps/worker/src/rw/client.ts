@@ -9,6 +9,10 @@ const USER_AGENT =
 
 export class RateLimitedError extends Error {}
 
+export function isBotCheckPage(html: string): boolean {
+  return /<title>\s*Verification\s*<\/title>/i.test(html) || html.includes("hg-security=");
+}
+
 export function routePageUrl({ from, to, date }: RouteQuery): string {
   return `${BASE_URL}/ru/route/?${new URLSearchParams({ from, to, date })}`;
 }
@@ -30,7 +34,11 @@ export async function fetchRouteHtml(query: RouteQuery): Promise<string> {
         throw new RateLimitedError(`HTTP ${response.status} for ${url}`);
       }
       if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
-      return await response.text();
+      const html = await response.text();
+      if (isBotCheckPage(html)) {
+        throw new RateLimitedError("pass.rw.by вернул антибот-проверку вместо расписания");
+      }
+      return html;
     } catch (error) {
       if (error instanceof RateLimitedError) throw error;
       lastError = error;

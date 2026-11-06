@@ -1,19 +1,24 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Suspense } from "react";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { formatDateTime } from "@rw/core/format";
 import { getWorkerStatus } from "@rw/db/trackers";
+import { Skeleton, Status } from "@/components/ui";
+import { DesktopNavigation, MobileNavigation } from "@/components/navigation";
 import "./globals.css";
 import { AutoRefresh } from "./auto-refresh";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const plexSans = IBM_Plex_Sans({
+  variable: "--font-plex-sans",
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600"],
 });
 
 export const metadata: Metadata = {
@@ -27,7 +32,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#000000",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f2efe6" },
+    { media: "(prefers-color-scheme: dark)", color: "#101112" },
+  ],
 };
 
 async function WorkerStatus() {
@@ -38,35 +46,54 @@ async function WorkerStatus() {
     // DB not ready yet
   }
 
-  const now = new Date();
-  const isOnline = status && status.expiresAt > now;
+  const isOnline = Boolean(status && status.expiresAt > new Date());
+  const description = isOnline
+    ? `Онлайн: ${status?.holder.split(":")[0] ?? "воркер"}`
+    : status
+      ? `Офлайн с ${formatDateTime(status.expiresAt)}`
+      : "Воркер не запущен";
 
   return (
-    <span className="ml-auto text-xs opacity-60">
-      {isOnline
-        ? `Воркер: онлайн (${status!.holder.split(":")[0]})`
-        : status
-          ? `Воркер: офлайн с ${formatDateTime(status.expiresAt)}`
-          : "Воркер: офлайн"}
-    </span>
+    <Status tone={isOnline ? "ok" : "warn"} pulse={isOnline} title={description}>
+      <span className="hidden sm:inline">воркер&nbsp;</span>
+      {isOnline ? "онлайн" : "офлайн"}
+    </Status>
   );
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html lang="ru" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">
+    <html
+      lang="ru"
+      suppressHydrationWarning
+      className={`${plexSans.variable} ${plexMono.variable} h-full antialiased`}
+    >
+      <body className="flex min-h-full flex-col">
         <AutoRefresh intervalMs={15000} />
-        <header className="border-b border-black/10 dark:border-white/10">
-          <nav className="mx-auto flex max-w-4xl flex-wrap items-center gap-4 px-4 py-3 text-sm">
-            <Link href="/" className="font-semibold">RW Tracker</Link>
-            <Link href="/" className="opacity-70 hover:opacity-100">Трекеры</Link>
-            <Link href="/trackers/new" className="opacity-70 hover:opacity-100">Новый трекер</Link>
-            <Link href="/settings" className="opacity-70 hover:opacity-100">Настройки</Link>
-            <WorkerStatus />
-          </nav>
+        <header className="sticky top-0 z-30 border-b border-rule bg-background">
+          <div className="mx-auto flex h-16 max-w-5xl items-center gap-10 px-4 sm:px-6 lg:px-8">
+            <Link href="/" className="flex items-center gap-2.5">
+              <span className="grid h-7 w-9 place-items-center rounded-ui bg-accent font-mono text-sm font-semibold text-accent-foreground">
+                RW
+              </span>
+              <span className="text-sm font-semibold tracking-tight">Tracker</span>
+            </Link>
+            <DesktopNavigation />
+            <div className="ml-auto flex shrink-0 items-center">
+              <Suspense fallback={<Skeleton className="h-3 w-24" />}>
+                <WorkerStatus />
+              </Suspense>
+            </div>
+          </div>
         </header>
-        <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">{children}</div>
+        <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-28 pt-10 sm:px-6 sm:pt-14 md:pb-20 lg:px-8">
+          {children}
+        </main>
+        <MobileNavigation />
       </body>
     </html>
   );

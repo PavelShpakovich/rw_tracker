@@ -7,22 +7,22 @@ export const size = { width: 180, height: 180 };
 
 export default function AppleIcon() {
   return new ImageResponse(
-    (
-      <div
-        style={{
-          width: 180,
-          height: 180,
-          background: "#000",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 120,
-          borderRadius: 36,
-        }}
-      >
-        🚆
-      </div>
-    ),
+    <div
+      style={{
+        width: 180,
+        height: 180,
+        background: "#f4b400",
+        color: "#1a1913",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 88,
+        fontWeight: 700,
+        letterSpacing: -4,
+      }}
+    >
+      RW
+    </div>,
     { width: 180, height: 180 },
   );
 }

@@ -1,20 +1,35 @@
 import { env } from "@/lib/env";
-import { formatDateTime } from "@rw/core/format";
+import {
+  formatDateTime,
+  formatIsoDate,
+  formatStation,
+} from "@rw/core/format";
 import { isTelegramConfigured } from "@rw/core/telegram";
 import { listRecipients } from "@rw/db/recipients";
 import { listRecentCheckRuns } from "@rw/db/trackers";
-import { addRecipientAction, removeRecipientAction, sendTestAction } from "../actions";
+import {
+  addRecipientAction,
+  removeRecipientAction,
+  sendTestAction,
+} from "../actions";
+import { ConfirmSubmitButton, SubmitButton } from "@/components/form-controls";
+import { Field, Input, Notice, PageHeader, Section, Status } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
 const STATUS_LABELS: Record<string, string> = {
-  ok: "ок",
-  parse_error: "вёрстка не распознана",
-  fetch_error: "сетевая ошибка",
-  rate_limited: "сайт ограничил запросы",
+  ok: "успешно",
+  parse_error: "изменилась вёрстка",
+  fetch_error: "ошибка сети",
+  rate_limited: "ограничение запросов",
 };
 
-const inputClass = "rounded border border-black/20 bg-transparent px-2 py-1.5 text-sm dark:border-white/20";
+const STATUS_TONES: Record<string, "ok" | "warn" | "danger"> = {
+  ok: "ok",
+  parse_error: "warn",
+  fetch_error: "danger",
+  rate_limited: "warn",
+};
 
 interface SearchParams {
   test?: string;
@@ -22,106 +37,191 @@ interface SearchParams {
   failed?: string;
 }
 
+type CheckRun = Awaited<ReturnType<typeof listRecentCheckRuns>>[number];
+type RunGroup = CheckRun & { repeats: number };
+const VISIBLE_RUNS = 5;
+
+// Consecutive identical results (same route, status and error) collapse into one row.
+function groupRuns(runs: CheckRun[]): RunGroup[] {
+  const groups: RunGroup[] = [];
+  for (const run of runs) {
+    const last = groups.at(-1);
+    if (
+      last &&
+      last.routeKey === run.routeKey &&
+      last.status === run.status &&
+      last.error === run.error
+    ) {
+      last.repeats += 1;
+    } else {
+      groups.push({ ...run, repeats: 1 });
+    }
+  }
+  return groups;
+}
+
+function formatRouteKey(routeKey: string) {
+  const [from, to, date] = routeKey.split("|");
+  if (!from || !to || !date) return routeKey;
+  return `${formatStation(from)} → ${formatStation(to)} · ${formatIsoDate(date)}`;
+}
+
 function testMessage({ test, sent, failed }: SearchParams) {
   switch (test) {
     case "ok":
-      return { className: "text-green-600", text: `Тестовое сообщение отправлено: ${sent}.` };
+      return { tone: "ok" as const, text: `Тестовое сообщение отправлено: ${sent}.` };
     case "partial":
       return {
-        className: "text-amber-600",
-        text: `Отправлено: ${sent}, не доставлено: ${failed}. Получатели, которым не дошло, должны нажать Start в чате с ботом.`,
+        tone: "warn" as const,
+        text: `Отправлено: ${sent}, не доставлено: ${failed}. Проверьте, что получатели открыли чат с ботом и нажали Start.`,
       };
     case "error":
-      return { className: "text-red-600", text: "Не удалось отправить. Проверьте TELEGRAM_BOT_TOKEN в .env." };
+      return {
+        tone: "danger" as const,
+        text: "Не удалось отправить. Проверьте TELEGRAM_BOT_TOKEN.",
+      };
     case "none":
-      return { className: "text-red-600", text: "Добавьте хотя бы одного получателя." };
+      return { tone: "warn" as const, text: "Сначала добавьте получателя уведомлений." };
     default:
       return null;
   }
 }
 
-export default async function SettingsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+function RunRow({ run }: { run: RunGroup }) {
+  return (
+    <li className="grid gap-x-6 gap-y-1 py-3 sm:grid-cols-[1fr_auto] sm:items-baseline">
+      <div className="min-w-0">
+        <p className="truncate text-sm">{formatRouteKey(run.routeKey)}</p>
+        <p className="mt-0.5 font-mono text-xs text-muted">
+          {formatDateTime(run.startedAt)}
+          {run.repeats > 1 ? ` · ×${run.repeats}` : ""}
+          {run.status === "ok" && run.trainsFound !== null
+            ? ` · поездов: ${run.trainsFound}`
+            : ""}
+        </p>
+      </div>
+      <Status tone={STATUS_TONES[run.status] ?? "warn"}>
+        {STATUS_LABELS[run.status] ?? run.status}
+      </Status>
+      {run.error ? (
+        <p className="break-words text-xs text-danger sm:col-span-2">{run.error}</p>
+      ) : null}
+    </li>
+  );
+}
+
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
   const params = await searchParams;
-  const runs = await listRecentCheckRuns();
+  const runs = groupRuns(await listRecentCheckRuns());
   const recipients = await listRecipients();
   const message = testMessage(params);
+  const telegramReady = isTelegramConfigured();
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-3">
-        <h1 className="text-xl font-semibold">Настройки</h1>
-        <ul className="space-y-1 text-sm">
-          <li>Токен бота (TELEGRAM_BOT_TOKEN в .env): {isTelegramConfigured() ? "заполнен" : "не заполнен"}</li>
-          <li>Интервал по умолчанию для новых трекеров: {env.DEFAULT_INTERVAL_SEC} сек</li>
-        </ul>
-      </section>
+    <div className="space-y-14">
+      <PageHeader
+        title="Настройки"
+        description="Кому слать уведомления и что происходит с проверками."
+      />
 
-      <section className="space-y-3">
-        <h2 className="font-medium">Получатели уведомлений</h2>
+      <Section title="Telegram">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-1.5">
+            <Status tone={telegramReady ? "ok" : "warn"}>
+              {telegramReady ? "токен бота настроен" : "токен бота не задан"}
+            </Status>
+            <p className="font-mono text-xs text-muted">
+              интервал по умолчанию: {env.DEFAULT_INTERVAL_SEC} с
+            </p>
+          </div>
+          <form action={sendTestAction}>
+            <SubmitButton variant="secondary" size="sm">
+              Отправить тест
+            </SubmitButton>
+          </form>
+        </div>
+        {message ? (
+          <div className="mt-5">
+            <Notice tone={message.tone}>{message.text}</Notice>
+          </div>
+        ) : null}
+      </Section>
+
+      <Section title="Получатели" meta={recipients.length}>
         {recipients.length === 0 ? (
-          <p className="text-sm opacity-70">Получателей пока нет. Уведомления никуда не отправляются.</p>
+          <p className="text-sm text-muted">
+            Получателей пока нет, уведомления никуда не уходят.
+          </p>
         ) : (
-          <ul className="space-y-2 text-sm">
+          <ul className="divide-y divide-rule border-y border-rule">
             {recipients.map((recipient) => (
-              <li key={recipient.chatId} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="font-mono">{recipient.chatId}</span>
-                {recipient.label ? <span className="opacity-70">{recipient.label}</span> : null}
+              <li
+                key={recipient.chatId}
+                className="flex flex-wrap items-center justify-between gap-3 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm">{recipient.label || "Без имени"}</p>
+                  <p className="mt-0.5 font-mono text-xs text-muted">{recipient.chatId}</p>
+                </div>
                 <form action={removeRecipientAction}>
                   <input type="hidden" name="chatId" value={recipient.chatId} />
-                  <button type="submit" className="text-xs text-red-600 underline">
+                  <ConfirmSubmitButton prompt="Удалить получателя?">
                     Удалить
-                  </button>
+                  </ConfirmSubmitButton>
                 </form>
               </li>
             ))}
           </ul>
         )}
 
-        <form action={addRecipientAction} className="grid gap-2 sm:grid-cols-[auto_1fr_auto] sm:items-end">
-          <label className="flex flex-col gap-1 text-sm">
-            Telegram ID
-            <input name="chatId" type="number" min={1} required placeholder="454737360" className={inputClass} />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Имя (необязательно)
-            <input name="label" maxLength={64} className={inputClass} />
-          </label>
-          <button type="submit" className="rounded bg-foreground px-4 py-1.5 text-sm text-background">
-            Добавить
-          </button>
+        <form
+          action={addRecipientAction}
+          className="mt-8 grid gap-4 sm:grid-cols-[1fr_1.2fr_auto] sm:items-end"
+        >
+          <Field label="Telegram ID">
+            <Input name="chatId" type="number" min={1} required placeholder="123456789" />
+          </Field>
+          <Field label="Имя">
+            <Input name="label" maxLength={64} placeholder="Необязательно" />
+          </Field>
+          <SubmitButton variant="primary">Добавить</SubmitButton>
         </form>
-        <p className="text-xs opacity-60">
-          ID можно узнать у @userinfobot. Каждый получатель должен один раз открыть бота и нажать Start.
+        <p className="mt-3 text-xs text-muted">
+          ID можно узнать у @userinfobot. Каждый получатель должен открыть чат с
+          ботом и нажать Start.
         </p>
+      </Section>
 
-        <form action={sendTestAction} className="pt-1">
-          <button type="submit" className="rounded border px-3 py-1.5 text-sm">
-            Отправить тестовое сообщение всем
-          </button>
-        </form>
-        {message ? <p className={`text-sm ${message.className}`}>{message.text}</p> : null}
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="font-medium">Последние проверки</h2>
+      <Section title="Последние проверки">
         {runs.length === 0 ? (
-          <p className="text-sm opacity-70">Проверок ещё не было. Они запускаются воркером (pnpm worker).</p>
+          <p className="text-sm text-muted">Проверок ещё не было. Они появятся после запуска воркера.</p>
         ) : (
-          <ul className="space-y-1 text-sm">
-            {runs.map((run) => (
-              <li key={run.id} className="flex flex-wrap gap-x-3">
-                <span className="opacity-70">{formatDateTime(run.startedAt)}</span>
-                <span className="font-mono text-xs opacity-70">{run.routeKey}</span>
-                <span className={run.status === "ok" ? "" : "text-red-600"}>
-                  {STATUS_LABELS[run.status] ?? run.status}
-                  {run.status === "ok" && run.trainsFound !== null ? `, поездов: ${run.trainsFound}` : ""}
-                </span>
-                {run.error ? <span className="text-xs text-red-600">{run.error}</span> : null}
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="divide-y divide-rule border-y border-rule">
+              {runs.slice(0, VISIBLE_RUNS).map((run) => (
+                <RunRow key={run.id} run={run} />
+              ))}
+            </ul>
+            {runs.length > VISIBLE_RUNS ? (
+              <details className="group mt-3">
+                <summary className="cursor-pointer list-none text-xs text-muted underline-offset-4 hover:text-foreground hover:underline [&::-webkit-details-marker]:hidden">
+                  <span className="group-open:hidden">Показать ещё {runs.length - VISIBLE_RUNS}</span>
+                  <span className="hidden group-open:inline">Свернуть</span>
+                </summary>
+                <ul className="mt-3 divide-y divide-rule border-y border-rule">
+                  {runs.slice(VISIBLE_RUNS).map((run) => (
+                    <RunRow key={run.id} run={run} />
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </>
         )}
-      </section>
+      </Section>
     </div>
   );
 }
