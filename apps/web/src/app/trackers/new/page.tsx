@@ -25,10 +25,12 @@ export default async function NewTrackerPage({ searchParams }: { searchParams: P
   let loadError: string | null = null;
   let isPending = false;
   let isWorkerOffline = false;
+  let searched: { from: string; to: string; date: string } | null = null;
 
   if (searchId) {
     const searchRecord = await getRouteSearch(Number(searchId));
     if (searchRecord) {
+      searched = { from: searchRecord.fromName, to: searchRecord.toName, date: searchRecord.date };
       if (searchRecord.status === "pending") {
         isPending = true;
         const ageMs = new Date().getTime() - searchRecord.createdAt.getTime();
@@ -41,9 +43,9 @@ export default async function NewTrackerPage({ searchParams }: { searchParams: P
     }
   }
 
-  const fromVal = from ?? "";
-  const toVal = to ?? "";
-  const dateVal = date ?? "";
+  const fromVal = searched?.from ?? from ?? "";
+  const toVal = searched?.to ?? to ?? "";
+  const dateVal = searched?.date ?? date ?? "";
 
   const trainsPayload = trains?.map(({ number, routeTitle, departure, arrival }) => ({
     number,
