@@ -3,42 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently -k -n web,worker -c blue,magenta \"next dev\" \"tsx watch --env-file-if-exists=.env src/worker/index.ts\"",
-    "start": "concurrently -k -n web,worker -c blue,magenta \"next start\" \"tsx --env-file-if-exists=.env src/worker/index.ts\"",
-    "build": "next build",
-    "worker": "tsx --env-file-if-exists=.env src/worker/index.ts",
-    "worker:once": "tsx --env-file-if-exists=.env src/worker/index.ts --once",
-    "check-route": "tsx --env-file-if-exists=.env scripts/check-route.ts",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
-    "test": "vitest run",
-    "lint": "eslint",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@electric-sql/pglite": "^0.5.15",
-    "cheerio": "^1.2.0",
-    "drizzle-orm": "^0.45.4",
-    "grammy": "^1.46.0",
-    "next": "16.4.5",
-    "postgres": "^4.1.0",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "zod": "^4.6.7"
+    "dev": "concurrently -k -n web,worker -c blue,magenta \"pnpm --filter @rw/web dev\" \"pnpm --filter @rw/worker dev\"",
+    "start": "concurrently -k -n web,worker -c blue,magenta \"pnpm --filter @rw/web start\" \"pnpm --filter @rw/worker start\"",
+    "build": "pnpm --filter @rw/web build",
+    "worker": "pnpm --filter @rw/worker start",
+    "worker:once": "pnpm --filter @rw/worker start --once",
+    "check-route": "pnpm --filter @rw/worker check-route",
+    "db:generate": "pnpm --filter @rw/db generate",
+    "db:migrate": "pnpm --filter @rw/db migrate",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint"
   },
   "devDependencies": {
-    "@tailwindcss/turbopack": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
     "concurrently": "^10.0.6",
-    "drizzle-kit": "^0.31.11",
     "eslint": "^9",
-    "eslint-config-next": "16.4.5",
-    "tailwindcss": "^4",
-    "tsx": "^4.23.15",
     "typescript": "^5",
-    "vitest": "^5.1.0"
+    "typescript-eslint": "^8"
   },
   "packageManager": "pnpm@10.33.2"
 }
