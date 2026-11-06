@@ -72,7 +72,9 @@ export function PageHeader({
           </p>
         ) : null}
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+      ) : null}
     </header>
   );
 }
@@ -92,7 +94,9 @@ export function Section({
     <section className={className}>
       <div className="flex items-baseline justify-between gap-4 border-t border-foreground pt-2.5">
         <h2 className="text-sm font-semibold">{title}</h2>
-        {meta ? <div className="font-mono text-xs text-muted">{meta}</div> : null}
+        {meta ? (
+          <div className="font-mono text-xs text-muted">{meta}</div>
+        ) : null}
       </div>
       <div className="mt-5">{children}</div>
     </section>
@@ -202,7 +206,9 @@ export function Figure({
       >
         <span className={figureValue[tone]}>{value}</span>
       </p>
-      <p className="mt-2 min-h-4 truncate font-mono text-xs text-muted">{detail}</p>
+      <p className="mt-2 min-h-4 truncate font-mono text-xs text-muted">
+        {detail}
+      </p>
     </div>
   );
 }
@@ -218,7 +224,9 @@ export function Empty({
 }) {
   return (
     <div className="rounded-ui border border-dashed border-rule-strong px-6 py-16 text-center">
-      <h2 className="text-balance text-2xl font-semibold tracking-tight">{title}</h2>
+      <h2 className="text-balance text-2xl font-semibold tracking-tight">
+        {title}
+      </h2>
       {description ? (
         <p className="mx-auto mt-2 max-w-sm text-pretty text-sm text-muted">
           {description}
@@ -230,7 +238,9 @@ export function Empty({
 }
 
 export function Skeleton({ className = "" }: { className?: string }) {
-  return <div aria-hidden="true" className={`animate-pulse bg-rule ${className}`} />;
+  return (
+    <div aria-hidden="true" className={`animate-pulse bg-rule ${className}`} />
+  );
 }
 
 export function Field({

@@ -1,9 +1,5 @@
 import { env } from "@/lib/env";
-import {
-  formatDateTime,
-  formatIsoDate,
-  formatStation,
-} from "@rw/core/format";
+import { formatDateTime, formatIsoDate, formatStation } from "@rw/core/format";
 import { isTelegramConfigured } from "@rw/core/telegram";
 import { listRecipients } from "@rw/db/recipients";
 import { listRecentCheckRuns } from "@rw/db/trackers";
@@ -13,7 +9,14 @@ import {
   sendTestAction,
 } from "../actions";
 import { ConfirmSubmitButton, SubmitButton } from "@/components/form-controls";
-import { Field, Input, Notice, PageHeader, Section, Status } from "@/components/ui";
+import {
+  Field,
+  Input,
+  Notice,
+  PageHeader,
+  Section,
+  Status,
+} from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +72,10 @@ function formatRouteKey(routeKey: string) {
 function testMessage({ test, sent, failed }: SearchParams) {
   switch (test) {
     case "ok":
-      return { tone: "ok" as const, text: `Тестовое сообщение отправлено: ${sent}.` };
+      return {
+        tone: "ok" as const,
+        text: `Тестовое сообщение отправлено: ${sent}.`,
+      };
     case "partial":
       return {
         tone: "warn" as const,
@@ -81,7 +87,10 @@ function testMessage({ test, sent, failed }: SearchParams) {
         text: "Не удалось отправить. Проверьте TELEGRAM_BOT_TOKEN.",
       };
     case "none":
-      return { tone: "warn" as const, text: "Сначала добавьте получателя уведомлений." };
+      return {
+        tone: "warn" as const,
+        text: "Сначала добавьте получателя уведомлений.",
+      };
     default:
       return null;
   }
@@ -104,7 +113,9 @@ function RunRow({ run }: { run: RunGroup }) {
         {STATUS_LABELS[run.status] ?? run.status}
       </Status>
       {run.error ? (
-        <p className="break-words text-xs text-danger sm:col-span-2">{run.error}</p>
+        <p className="break-words text-xs text-danger sm:col-span-2">
+          {run.error}
+        </p>
       ) : null}
     </li>
   );
@@ -164,8 +175,12 @@ export default async function SettingsPage({
                 className="flex flex-wrap items-center justify-between gap-3 py-3"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm">{recipient.label || "Без имени"}</p>
-                  <p className="mt-0.5 font-mono text-xs text-muted">{recipient.chatId}</p>
+                  <p className="truncate text-sm">
+                    {recipient.label || "Без имени"}
+                  </p>
+                  <p className="mt-0.5 font-mono text-xs text-muted">
+                    {recipient.chatId}
+                  </p>
                 </div>
                 <form action={removeRecipientAction}>
                   <input type="hidden" name="chatId" value={recipient.chatId} />
@@ -183,7 +198,13 @@ export default async function SettingsPage({
           className="mt-8 grid gap-4 sm:grid-cols-[1fr_1.2fr_auto] sm:items-end"
         >
           <Field label="Telegram ID">
-            <Input name="chatId" type="number" min={1} required placeholder="123456789" />
+            <Input
+              name="chatId"
+              type="number"
+              min={1}
+              required
+              placeholder="123456789"
+            />
           </Field>
           <Field label="Имя">
             <Input name="label" maxLength={64} placeholder="Необязательно" />
@@ -198,7 +219,9 @@ export default async function SettingsPage({
 
       <Section title="Последние проверки">
         {runs.length === 0 ? (
-          <p className="text-sm text-muted">Проверок ещё не было. Они появятся после запуска воркера.</p>
+          <p className="text-sm text-muted">
+            Проверок ещё не было. Они появятся после запуска воркера.
+          </p>
         ) : (
           <>
             <ul className="divide-y divide-rule border-y border-rule">
@@ -209,7 +232,9 @@ export default async function SettingsPage({
             {runs.length > VISIBLE_RUNS ? (
               <details className="group mt-3">
                 <summary className="cursor-pointer list-none text-xs text-muted underline-offset-4 hover:text-foreground hover:underline [&::-webkit-details-marker]:hidden">
-                  <span className="group-open:hidden">Показать ещё {runs.length - VISIBLE_RUNS}</span>
+                  <span className="group-open:hidden">
+                    Показать ещё {runs.length - VISIBLE_RUNS}
+                  </span>
                   <span className="hidden group-open:inline">Свернуть</span>
                 </summary>
                 <ul className="mt-3 divide-y divide-rule border-y border-rule">

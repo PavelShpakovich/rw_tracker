@@ -34,7 +34,9 @@ export function RouteSearchPanel({
       <div className="flex flex-wrap items-baseline justify-between gap-3 border-y border-foreground py-4">
         <p className="text-lg font-medium tracking-tight">
           {from} <span aria-hidden="true">→</span> {to}
-          <span className="ml-4 font-mono text-xs font-normal text-muted">{date}</span>
+          <span className="ml-4 font-mono text-xs font-normal text-muted">
+            {date}
+          </span>
         </p>
         <Button size="sm" variant="ghost" onClick={() => setExpanded(true)}>
           Изменить
@@ -50,10 +52,22 @@ export function RouteSearchPanel({
         className="grid gap-4 sm:grid-cols-[1fr_1fr_0.8fr_auto] sm:items-end"
       >
         <Field label="Откуда">
-          <Input name="from" defaultValue={from} required placeholder="Минск-Пассажирский" autoComplete="off" />
+          <Input
+            name="from"
+            defaultValue={from}
+            required
+            placeholder="Минск-Пассажирский"
+            autoComplete="off"
+          />
         </Field>
         <Field label="Куда">
-          <Input name="to" defaultValue={to} required placeholder="Гродно" autoComplete="off" />
+          <Input
+            name="to"
+            defaultValue={to}
+            required
+            placeholder="Гродно"
+            autoComplete="off"
+          />
         </Field>
         <Field label="Дата">
           <Input name="date" type="date" defaultValue={date} required />
@@ -106,12 +120,14 @@ export function TrackerWizard({
   const selectedTrainCount = new Set(
     [...selected].map((value) => value.split("|")[0]),
   ).size;
-  const trainPayload = trains.map(({ number, routeTitle, departure, arrival }) => ({
-    number,
-    routeTitle,
-    departure,
-    arrival,
-  }));
+  const trainPayload = trains.map(
+    ({ number, routeTitle, departure, arrival }) => ({
+      number,
+      routeTitle,
+      departure,
+      arrival,
+    }),
+  );
 
   function toggleSeat(key: string) {
     setSelected((current) => {
@@ -167,7 +183,10 @@ export function TrackerWizard({
               seatType: seat.seatType,
               count: seat.count,
               price: seat.priceByn,
-              note: seat.priceByn !== null ? formatPriceByn(seat.priceByn) : "цена не указана",
+              note:
+                seat.priceByn !== null
+                  ? formatPriceByn(seat.priceByn)
+                  : "цена не указана",
             })),
           ];
 
@@ -209,10 +228,16 @@ export function TrackerWizard({
                         className="sr-only"
                       />
                       <span className="flex items-baseline justify-between gap-2 text-sm">
-                        <span className="truncate">{SEAT_LABELS[option.seatType]}</span>
-                        <span className="font-mono text-base">{option.count}</span>
+                        <span className="truncate">
+                          {SEAT_LABELS[option.seatType]}
+                        </span>
+                        <span className="font-mono text-base">
+                          {option.count}
+                        </span>
                       </span>
-                      <span className={`mt-1 block truncate font-mono text-xs ${checked ? "opacity-80" : "text-muted"}`}>
+                      <span
+                        className={`mt-1 block truncate font-mono text-xs ${checked ? "opacity-80" : "text-muted"}`}
+                      >
                         {option.note}
                       </span>
                     </label>
@@ -235,16 +260,33 @@ export function TrackerWizard({
           description={`Поездов выбрано: ${selectedTrainCount}. Изменить условия позже можно, только создав трекер заново.`}
         />
         <div className="grid gap-5 border-t border-foreground pt-5 sm:grid-cols-2">
-          <Field label="Порог мест" hint="Сообщать, когда мест станет не меньше.">
-            <Input name="minSeats" type="number" min={1} defaultValue={1} required />
+          <Field
+            label="Порог мест"
+            hint="Сообщать, когда мест станет не меньше."
+          >
+            <Input
+              name="minSeats"
+              type="number"
+              min={1}
+              defaultValue={1}
+              required
+            />
           </Field>
           <Field label="Интервал проверки, с" hint="Не меньше 60 секунд.">
-            <Input name="intervalSec" type="number" min={60} defaultValue={defaultIntervalSec} required />
+            <Input
+              name="intervalSec"
+              type="number"
+              min={60}
+              defaultValue={defaultIntervalSec}
+              required
+            />
           </Field>
         </div>
         <fieldset className="border-t border-foreground pt-5">
           <legend className="sr-only">О каких изменениях сообщать</legend>
-          <p className="mb-2 text-sm font-semibold">О каких изменениях сообщать</p>
+          <p className="mb-2 text-sm font-semibold">
+            О каких изменениях сообщать
+          </p>
           <ul className="divide-y divide-rule border-y border-rule">
             {EVENT_KINDS.map((kind) => (
               <li key={kind}>
@@ -258,7 +300,9 @@ export function TrackerWizard({
                   />
                   <span>
                     <span className="block text-sm">{EVENT_LABELS[kind]}</span>
-                    <span className="block text-xs text-muted">{eventDescriptions[kind]}</span>
+                    <span className="block text-xs text-muted">
+                      {eventDescriptions[kind]}
+                    </span>
                   </span>
                 </label>
               </li>
@@ -275,16 +319,28 @@ export function TrackerWizard({
               {selected.size > 0 ? ` · поездов: ${selectedTrainCount}` : ""}
             </p>
           ) : (
-            <Button type="button" variant="ghost" size="sm" onClick={() => setStep(1)}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setStep(1)}
+            >
               ← Назад
             </Button>
           )}
           {step === 1 ? (
-            <Button type="button" variant="primary" disabled={selected.size === 0} onClick={continueToSettings}>
+            <Button
+              type="button"
+              variant="primary"
+              disabled={selected.size === 0}
+              onClick={continueToSettings}
+            >
               Далее
             </Button>
           ) : (
-            <SubmitButton>Создать {selectedTrainCount === 1 ? "трекер" : "трекеры"}</SubmitButton>
+            <SubmitButton>
+              Создать {selectedTrainCount === 1 ? "трекер" : "трекеры"}
+            </SubmitButton>
           )}
         </div>
       </div>

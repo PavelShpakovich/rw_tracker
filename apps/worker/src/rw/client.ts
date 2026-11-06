@@ -10,7 +10,10 @@ const USER_AGENT =
 export class RateLimitedError extends Error {}
 
 export function isBotCheckPage(html: string): boolean {
-  return /<title>\s*Verification\s*<\/title>/i.test(html) || html.includes("hg-security=");
+  return (
+    /<title>\s*Verification\s*<\/title>/i.test(html) ||
+    html.includes("hg-security=")
+  );
 }
 
 export function routePageUrl({ from, to, date }: RouteQuery): string {
@@ -27,7 +30,10 @@ export async function fetchRouteHtml(query: RouteQuery): Promise<string> {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       const response = await fetch(url, {
-        headers: { "User-Agent": USER_AGENT, "Accept-Language": "ru-RU,ru;q=0.9" },
+        headers: {
+          "User-Agent": USER_AGENT,
+          "Accept-Language": "ru-RU,ru;q=0.9",
+        },
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (response.status === 403 || response.status === 429) {
@@ -36,13 +42,18 @@ export async function fetchRouteHtml(query: RouteQuery): Promise<string> {
       if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
       const html = await response.text();
       if (isBotCheckPage(html)) {
-        throw new RateLimitedError("pass.rw.by вернул антибот-проверку вместо расписания");
+        throw new RateLimitedError(
+          "pass.rw.by вернул антибот-проверку вместо расписания",
+        );
       }
       return html;
     } catch (error) {
       if (error instanceof RateLimitedError) throw error;
       lastError = error;
-      log.warn(`Route fetch attempt ${attempt}/${MAX_ATTEMPTS} failed`, String(error));
+      log.warn(
+        `Route fetch attempt ${attempt}/${MAX_ATTEMPTS} failed`,
+        String(error),
+      );
       if (attempt < MAX_ATTEMPTS) await sleep(2000 * 2 ** (attempt - 1));
     }
   }

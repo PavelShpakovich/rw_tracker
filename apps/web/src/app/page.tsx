@@ -111,8 +111,7 @@ export default async function DashboardPage() {
               {[...errors].map(([message, count]) => (
                 <Notice key={message} tone="danger">
                   Проверка не удалась у {count}{" "}
-                  {plural(count, "трекера", "трекеров", "трекеров")}:{" "}
-                  {message}
+                  {plural(count, "трекера", "трекеров", "трекеров")}: {message}
                 </Notice>
               ))}
             </div>

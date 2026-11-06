@@ -158,7 +158,11 @@ export function TrackerCard({
         <div className="flex items-center gap-2">
           <form action={setActiveAction}>
             <input type="hidden" name="id" value={tracker.id} />
-            <input type="hidden" name="active" value={String(!tracker.active)} />
+            <input
+              type="hidden"
+              name="active"
+              value={String(!tracker.active)}
+            />
             <SubmitButton variant="secondary" size="sm">
               {tracker.active ? "Пауза" : "Продолжить"}
             </SubmitButton>

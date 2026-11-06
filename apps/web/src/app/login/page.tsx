@@ -17,7 +17,10 @@ export default async function LoginPage({
   return (
     <div className="mx-auto max-w-sm pt-6 sm:pt-16">
       <h1 className="text-4xl font-semibold tracking-tight">Вход</h1>
-      <form action={loginAction} className="mt-8 space-y-5 border-t border-foreground pt-6">
+      <form
+        action={loginAction}
+        className="mt-8 space-y-5 border-t border-foreground pt-6"
+      >
         <Field label="Пароль">
           <Input
             name="password"
@@ -27,7 +30,11 @@ export default async function LoginPage({
             autoComplete="current-password"
           />
         </Field>
-        {error ? <Notice tone="danger" role="alert">Неверный пароль.</Notice> : null}
+        {error ? (
+          <Notice tone="danger" role="alert">
+            Неверный пароль.
+          </Notice>
+        ) : null}
         <SubmitButton className="w-full">Войти</SubmitButton>
       </form>
     </div>

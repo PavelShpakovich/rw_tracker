@@ -23,7 +23,10 @@ export function DesktopNavigation() {
   const pathname = usePathname();
 
   return (
-    <nav aria-label="Основная навигация" className="hidden h-full items-stretch gap-8 md:flex">
+    <nav
+      aria-label="Основная навигация"
+      className="hidden h-full items-stretch gap-8 md:flex"
+    >
       {items.map((item) => {
         const active = isActivePath(pathname, item.href);
         return (
@@ -32,7 +35,9 @@ export function DesktopNavigation() {
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={`relative flex items-center text-sm transition-colors ${
-              active ? "font-medium text-foreground" : "text-muted hover:text-foreground"
+              active
+                ? "font-medium text-foreground"
+                : "text-muted hover:text-foreground"
             }`}
           >
             {item.label}

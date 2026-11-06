@@ -58,12 +58,27 @@ export function ConfirmSubmitButton({
 
   if (confirming) {
     return (
-      <span role="group" aria-label="Подтверждение" className="flex flex-wrap items-center gap-3">
+      <span
+        role="group"
+        aria-label="Подтверждение"
+        className="flex flex-wrap items-center gap-3"
+      >
         <span className="text-xs text-danger">{prompt}</span>
-        <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setConfirming(false)}
+        >
           Отмена
         </Button>
-        <Button type="submit" size="sm" variant="danger" disabled={pending} aria-busy={pending}>
+        <Button
+          type="submit"
+          size="sm"
+          variant="danger"
+          disabled={pending}
+          aria-busy={pending}
+        >
           {pending ? "Удаляем" : confirmLabel}
         </Button>
       </span>
@@ -71,7 +86,12 @@ export function ConfirmSubmitButton({
   }
 
   return (
-    <Button type="button" size="sm" variant="danger" onClick={() => setConfirming(true)}>
+    <Button
+      type="button"
+      size="sm"
+      variant="danger"
+      onClick={() => setConfirming(true)}
+    >
       {children}
     </Button>
   );

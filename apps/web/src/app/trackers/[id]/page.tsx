@@ -90,14 +90,22 @@ export default async function TrackerPage({
         <div className="flex items-center gap-2">
           <form action={setActiveAction}>
             <input type="hidden" name="id" value={tracker.id} />
-            <input type="hidden" name="active" value={String(!tracker.active)} />
+            <input
+              type="hidden"
+              name="active"
+              value={String(!tracker.active)}
+            />
             <SubmitButton variant="secondary" size="sm">
               {tracker.active ? "Пауза" : "Продолжить"}
             </SubmitButton>
           </form>
           <form action={requestCheckAction}>
             <input type="hidden" name="id" value={tracker.id} />
-            <SubmitButton variant="primary" size="sm" disabled={!tracker.active}>
+            <SubmitButton
+              variant="primary"
+              size="sm"
+              disabled={!tracker.active}
+            >
               Проверить сейчас
             </SubmitButton>
           </form>
@@ -168,7 +176,9 @@ export default async function TrackerPage({
                       <p className="whitespace-nowrap font-mono text-sm">
                         <span className="text-muted">{event.prev ?? 0}</span>
                         <span className="text-subtle"> → </span>
-                        <span className={eventMark[event.kind]}>{event.curr}</span>
+                        <span className={eventMark[event.kind]}>
+                          {event.curr}
+                        </span>
                         {event.priceByn !== null ? (
                           <span className="ml-3 hidden text-xs text-muted sm:inline">
                             {formatPriceByn(event.priceByn)}
@@ -190,7 +200,9 @@ export default async function TrackerPage({
         </p>
         <form action={deleteTrackerAction}>
           <input type="hidden" name="id" value={tracker.id} />
-          <ConfirmSubmitButton prompt={`Удалить трекер ${tracker.trainNumber}?`}>
+          <ConfirmSubmitButton
+            prompt={`Удалить трекер ${tracker.trainNumber}?`}
+          >
             Удалить трекер
           </ConfirmSubmitButton>
         </form>

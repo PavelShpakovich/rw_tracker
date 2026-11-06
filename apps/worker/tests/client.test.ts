@@ -3,7 +3,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { isBotCheckPage } from "../src/rw/client";
 
-const fixture = (name: string) => readFileSync(path.join(__dirname, "fixtures", name), "utf8");
+const fixture = (name: string) =>
+  readFileSync(path.join(__dirname, "fixtures", name), "utf8");
 
 describe("isBotCheckPage", () => {
   it("detects the pass.rw.by verification page", () => {

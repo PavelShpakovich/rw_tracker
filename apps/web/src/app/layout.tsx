@@ -54,7 +54,11 @@ async function WorkerStatus() {
       : "Воркер не запущен";
 
   return (
-    <Status tone={isOnline ? "ok" : "warn"} pulse={isOnline} title={description}>
+    <Status
+      tone={isOnline ? "ok" : "warn"}
+      pulse={isOnline}
+      title={description}
+    >
       <span className="hidden sm:inline">воркер&nbsp;</span>
       {isOnline ? "онлайн" : "офлайн"}
     </Status>
@@ -80,7 +84,9 @@ export default function RootLayout({
               <span className="grid h-7 w-9 place-items-center rounded-ui bg-accent font-mono text-sm font-semibold text-accent-foreground">
                 RW
               </span>
-              <span className="text-sm font-semibold tracking-tight">Tracker</span>
+              <span className="text-sm font-semibold tracking-tight">
+                Tracker
+              </span>
             </Link>
             <DesktopNavigation />
             <div className="ml-auto flex shrink-0 items-center">
